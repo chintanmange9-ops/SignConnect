@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# ML / Data
+backend-repo/data/
+backend-repo/my_model/
+backend-repo/hand_landmarker.task
+*.npy
+
+# Dataset (large)
+archive/
+organized/
+
+# Node
+sign-language-translator/node_modules/
+sign-language-translator/dist/
+
+# Misc
+unnecessary_files/
+.vscode/
+*.log

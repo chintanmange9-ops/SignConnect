@@ -1,0 +1,13 @@
+fastapi
+uvicorn
+pydantic
+numpy<2.0
+tensorflow-cpu==2.12.0
+scikit-learn
+opencv-python>=4.8,<4.10
+mediapipe==0.10.32
+ollama
+language_tool_python
+keyboard
+matplotlib
+gtts

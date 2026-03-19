@@ -1,0 +1,12 @@
+__pycache__
+.git
+*.pyc
+data/
+data_collection.py
+model.py
+my_functions.py
+hand_landmarker.task
+requirements.txt
+README.md
+LICENSE
+training_log.txt

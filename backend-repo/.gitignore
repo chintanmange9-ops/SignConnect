@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+*.pyo
+data/
+my_model/
+videos_input/
+hand_landmarker.task
+*.npy
