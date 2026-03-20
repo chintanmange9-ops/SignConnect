@@ -139,3 +139,11 @@ TOMORROW, WAIT, WALK, WANT, WASH, WATER, WHERE, WRITE, YES, YOU
 - Ollama is optional — app falls back to rule-based keyword extraction if offline
 - The Ollama offline badge appears in the header when backend is up but Ollama is unreachable
 - `hand_landmarker.task` is auto-downloaded on first run of `data_collection.py`
+- If the system does not work, try reloading the tab and restarting the server — Ollama output can sometimes take time on first inference
+
+---
+
+## Dataset
+
+Sign videos are sourced from the **WLASL (Word-Level American Sign Language)** dataset, available on Kaggle:
+[https://www.kaggle.com/datasets/risangbaskoro/wlasl-processed](https://www.kaggle.com/datasets/risangbaskoro/wlasl-processed)
