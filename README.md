@@ -140,6 +140,9 @@ TOMORROW, WAIT, WALK, WANT, WASH, WATER, WHERE, WRITE, YES, YOU
 - The Ollama offline badge appears in the header when backend is up but Ollama is unreachable
 - `hand_landmarker.task` is auto-downloaded on first run of `data_collection.py`
 - If the system does not work, try reloading the tab and restarting the server — Ollama output can sometimes take time on first inference
+- Ensure proper lighting — avoid backlighting and keep your hand well-lit for accurate detection
+- Perform each sign clearly and one at a time — hold the sign steady for a moment before moving to the next
+- Supported browsers: Chrome 90+, Edge 90+, Firefox 90+ (Internet Explorer not supported)
 
 ---
 
