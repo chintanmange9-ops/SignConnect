@@ -9,4 +9,7 @@ export default defineConfig({
       '@': fileURLToPath(new URL('./src', import.meta.url)),
     },
   },
+  optimizeDeps: {
+    exclude: ['@mediapipe/tasks-vision', '@mediapipe/hands'],
+  },
 })

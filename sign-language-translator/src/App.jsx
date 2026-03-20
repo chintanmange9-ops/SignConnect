@@ -255,10 +255,8 @@ function SignToSpeech() {
     wordLastSeen.current = {};
     setIsReady(false); setDetectedWord(''); setConfidence(0);
   }, []);
-
   const startCamera = useCallback(async () => {
-    const { Hands, HAND_CONNECTIONS, drawConnectors, drawLandmarks } = window;
-    if (!Hands || !videoRef.current || !canvasRef.current) return;
+    if (!videoRef.current || !canvasRef.current) return;
     let stream;
     try { stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } }); }
     catch (e) { console.error('Camera denied:', e); return; }
@@ -266,56 +264,78 @@ function SignToSpeech() {
     videoRef.current.srcObject = stream;
     await videoRef.current.play();
 
-    const hands = new Hands({ locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}` });
-    hands.setOptions({ maxNumHands: 2, modelComplexity: 1, minDetectionConfidence: 0.3, minTrackingConfidence: 0.3 });
-    hands.onResults((results) => {
-      if (!canvasRef.current) return;
-      const ctx = canvasRef.current.getContext('2d');
-      ctx.save();
-      let lh = new Array(63).fill(0), rh = new Array(63).fill(0);
-      if (results.multiHandLandmarks && results.multiHandedness) {
-        for (let i = 0; i < results.multiHandLandmarks.length; i++) {
-          const lms = results.multiHandLandmarks[i];
-          const side = results.multiHandedness[i].label;
-          drawConnectors(ctx, lms, HAND_CONNECTIONS, { color: 'rgba(20,184,166,0.8)', lineWidth: 2 });
-          drawLandmarks(ctx, lms, { color: '#f0fdf4', lineWidth: 1, radius: 3 });
-          const flat = lms.reduce((a, lm) => { a.push(lm.x, lm.y, lm.z); return a; }, []);
-          if (side === 'Left') rh = flat; else lh = flat;
-        }
-      }
-      ctx.restore();
-      if (!results.multiHandLandmarks?.length) { framesBuffer.current = []; return; }
-      framesBuffer.current.push([...lh, ...rh]);
-      if (framesBuffer.current.length >= 15) {
-        const batch = [...framesBuffer.current];
-        framesBuffer.current = [];
-        fetch(`${BACKEND_URL}/predict`, {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ keypoints: batch })
-        }).then(r => r.json()).then(data => {
-          if (!data.predicted) return;
-          const now = Date.now();
-          if (now - lastAcceptedTime.current < COOLDOWN_MS) return;
-          const lastSeen = wordLastSeen.current[data.predicted] || 0;
-          if (now - lastSeen < WORD_COOLDOWN_MS) return;
-          lastAcceptedTime.current = now;
-          wordLastSeen.current[data.predicted] = now;
-          setDetectedWord(data.predicted);
-          setConfidence(Math.round((data.confidence || 0) * 100));
-          setWords(prev => prev.length === 0 || prev[prev.length - 1] !== data.predicted
-            ? [...prev, data.predicted].slice(-15) : prev);
-        }).catch(() => {});
-      }
+    // Init MediaPipe Tasks Vision HandLandmarker (loaded via CDN on window)
+    const { HandLandmarker, FilesetResolver, DrawingUtils } = window;
+    if (!HandLandmarker || !FilesetResolver) {
+      console.error('MediaPipe Tasks Vision not loaded yet — retrying in 500ms');
+      setTimeout(() => startCamera(), 500);
+      return;
+    }
+    const vision = await FilesetResolver.forVisionTasks(
+      'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm'
+    );
+    const landmarker = await HandLandmarker.createFromOptions(vision, {
+      baseOptions: {
+        modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task',
+        delegate: 'GPU',
+      },
+      runningMode: 'VIDEO',
+      numHands: 2,
+      minHandDetectionConfidence: 0.3,
+      minHandPresenceConfidence: 0.3,
+      minTrackingConfidence: 0.3,
     });
-    handsRef.current = hands;
+    handsRef.current = landmarker;
+
     await new Promise(resolve => { const c = () => videoRef.current?.videoWidth > 0 ? resolve() : setTimeout(c, 50); c(); });
     canvasRef.current.width = videoRef.current.videoWidth;
     canvasRef.current.height = videoRef.current.videoHeight;
     setIsReady(true);
-    const loop = async () => {
-      if (handsRef.current && videoRef.current?.readyState >= 2) {
-        canvasRef.current.getContext('2d').drawImage(videoRef.current, 0, 0, canvasRef.current.width, canvasRef.current.height);
-        try { await handsRef.current.send({ image: canvasRef.current }); } catch (_) {}
+
+    const drawingUtils = new DrawingUtils(canvasRef.current.getContext('2d'));
+
+    const loop = () => {
+      if (!handsRef.current || !videoRef.current || videoRef.current.readyState < 2) {
+        rafRef.current = requestAnimationFrame(loop); return;
+      }
+      const ctx = canvasRef.current.getContext('2d');
+      ctx.drawImage(videoRef.current, 0, 0, canvasRef.current.width, canvasRef.current.height);
+
+      const results = handsRef.current.detectForVideo(videoRef.current, performance.now());
+
+      let lh = new Array(63).fill(0), rh = new Array(63).fill(0);
+      if (results.landmarks && results.landmarks.length > 0) {
+        for (let i = 0; i < results.landmarks.length; i++) {
+          const lms = results.landmarks[i];
+          const side = results.handedness[i][0].categoryName; // 'Left' or 'Right'
+          drawingUtils.drawConnectors(lms, HandLandmarker.HAND_CONNECTIONS, { color: 'rgba(20,184,166,0.8)', lineWidth: 2 });
+          drawingUtils.drawLandmarks(lms, { color: '#f0fdf4', lineWidth: 1, radius: 3 });
+          const flat = lms.reduce((a, lm) => { a.push(lm.x, lm.y, lm.z); return a; }, []);
+          if (side === 'Left') lh = flat; else rh = flat;
+        }
+        framesBuffer.current.push([...lh, ...rh]);
+        if (framesBuffer.current.length >= 15) {
+          const batch = [...framesBuffer.current];
+          framesBuffer.current = [];
+          fetch(`${BACKEND_URL}/predict`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ keypoints: batch })
+          }).then(r => r.json()).then(data => {
+            if (!data.predicted) return;
+            const now = Date.now();
+            if (now - lastAcceptedTime.current < COOLDOWN_MS) return;
+            const lastSeen = wordLastSeen.current[data.predicted] || 0;
+            if (now - lastSeen < WORD_COOLDOWN_MS) return;
+            lastAcceptedTime.current = now;
+            wordLastSeen.current[data.predicted] = now;
+            setDetectedWord(data.predicted);
+            setConfidence(Math.round((data.confidence || 0) * 100));
+            setWords(prev => prev.length === 0 || prev[prev.length - 1] !== data.predicted
+              ? [...prev, data.predicted].slice(-15) : prev);
+          }).catch(() => {});
+        }
+      } else {
+        framesBuffer.current = [];
       }
       rafRef.current = requestAnimationFrame(loop);
     };
@@ -454,7 +474,7 @@ function SignToSpeech() {
             </div>
             <LangDropdown value={lang} onChange={(v) => { setLang(v); setTranslationKey(k => k + 1); }} />
           </div>
-          <div style={{ minHeight: '90px', padding: '16px', background: 'rgba(5,7,9,0.6)', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.05)', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '8px' }}>
+          <div style={{ height: '160px', overflowY: 'auto', padding: '16px', background: 'rgba(5,7,9,0.6)', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.05)', display: 'flex', flexDirection: 'column', justifyContent: 'flex-start', gap: '8px' }}>
             {generating
               ? <div style={{ display: 'flex', alignItems: 'center', gap: 10, color: '#6b7280' }}>
                   <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} />

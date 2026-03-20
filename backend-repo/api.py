@@ -131,6 +131,7 @@ SYSTEM_PROMPT = (
     "Users communicate using Indian Sign Language (ISL). "
     "You receive a list of sign keywords detected in sequence and must produce "
     "a single short, natural English sentence that best captures the intent. "
+    "Always use proper grammar, punctuation, commas, and conjunctions like 'and' or 'but' where appropriate. "
     "The person signing is typically asking for help, expressing a need, or giving a simple instruction. "
     "Keep sentences concise and literal — do not add extra context or assumptions. "
     "Reply with only the sentence, nothing else."
@@ -152,7 +153,7 @@ def _is_ollama_alive() -> bool:
     t.join(timeout=3)
     return result[0]
 
-def _ollama(prompt: str, system: str = SYSTEM_PROMPT, timeout: int = 30) -> str:
+def _ollama(prompt: str, system: str = SYSTEM_PROMPT, timeout: int = 90) -> str:
     """Send a prompt to gemma3:4b via Ollama with a timeout. Raises on failure."""
     result = [None]
     error  = [None]
@@ -184,31 +185,22 @@ def llm_to_sentence(words: List[str]) -> str:
         try:
             deduped = [w for i, w in enumerate(words) if i == 0 or w != words[i - 1]]
             prompt = (
-                f"Sign keywords (in order detected): {', '.join(deduped)}\n"
-                "Convert these into one short, natural English sentence."
+                f"These are sign language keywords detected in order: {', '.join(deduped)}\n"
+                "Translate ALL of these keywords into one grammatically correct, natural English sentence. "
+                "Every keyword must contribute to the meaning — do not ignore any. "
+                "Use proper punctuation, commas, and conjunctions where needed. "
+                "Reply with only the final sentence, nothing else."
             )
             return _ollama(prompt)
         except Exception as e:
             print(f"Ollama sentence error: {e}")
 
-    # Rule-based fallback
-    key = words[0].lower() if words else ""
-    if key in TRANSLATIONS:
-        return TRANSLATIONS[key]["english"]
-    raw = " ".join(words).capitalize() + "."
-    if GRAMMAR_TOOL:
-        try:
-            return GRAMMAR_TOOL.correct(raw)
-        except Exception:
-            pass
+    # Rule-based fallback — join the detected words as-is
+    raw = " ".join(w.capitalize() if i == 0 else w.lower() for i, w in enumerate(words)) + "."
     return raw
 
 def llm_translate(sentence: str, words: List[str]) -> dict:
     """Translate English sentence → Hindi + Marathi."""
-    key = words[0].lower() if words else ""
-    if key in TRANSLATIONS:
-        return TRANSLATIONS[key]
-
     if _is_ollama_alive():
         try:
             prompt = (
